@@ -36,7 +36,7 @@
 
 ```bash
 # 下载脚本
-curl -fsSL -o xray-one-click.sh https://ba.sh/8qBR
+curl -fsSL -o xray-one-click.sh https://raw.githubusercontent.com/Oat-Milky-desu/xray-one-click/main/xray-one-click.sh
 
 # 赋予执行权限并运行
 chmod +x xray-one-click.sh
