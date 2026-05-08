@@ -129,10 +129,20 @@ generate_uuids() {
 }
 
 generate_reality_keys() {
+    local output=""
+    local xray_bin=""
+
     if command_exists xray; then
-        xray x25519
-    else
-        # 临时下载 xray 来生成密钥
+        xray_bin="xray"
+    elif [[ -x /usr/local/bin/xray ]]; then
+        xray_bin="/usr/local/bin/xray"
+    fi
+
+    if [[ -n "$xray_bin" ]]; then
+        output=$("$xray_bin" x25519 2>/dev/null) || true
+    fi
+
+    if [[ -z "$output" ]]; then
         local tmp_xray
         tmp_xray="/tmp/xray_tmp_$$"
         mkdir -p "$tmp_xray"
@@ -144,12 +154,23 @@ generate_reality_keys() {
             armv7l)  arch="armv7a" ;;
             *)       arch="64" ;;
         esac
-        wget -q -O "$tmp_xray/xray" "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-$arch" 2>/dev/null || true
-        chmod +x "$tmp_xray/xray" 2>/dev/null || true
-        if [[ -x "$tmp_xray/xray" ]]; then
-            "$tmp_xray/xray" x25519
+        local latest_tag
+        latest_tag=$(curl -s https://api.github.com/repos/XTLS/Xray-core/releases/latest | jq -r '.tag_name' 2>/dev/null)
+        if [[ -n "$latest_tag" && "$latest_tag" != "null" ]]; then
+            local download_url="https://github.com/XTLS/Xray-core/releases/download/${latest_tag}/Xray-linux-${arch}.zip"
+            wget -q -O "$tmp_xray/xray.zip" "$download_url" 2>/dev/null && {
+                unzip -o "$tmp_xray/xray.zip" -d "$tmp_xray" 2>/dev/null || true
+                if [[ -f "$tmp_xray/xray" ]]; then
+                    chmod +x "$tmp_xray/xray"
+                    output=$("$tmp_xray/xray" x25519 2>/dev/null) || true
+                fi
+            }
         fi
         rm -rf "$tmp_xray"
+    fi
+
+    if [[ -n "$output" ]]; then
+        echo "$output"
     fi
 }
 
@@ -551,15 +572,20 @@ collect_params() {
     read -rp "Reality 私钥 (留空则自动生成): " REALITY_PRIVATE_KEY
     if [[ -z "$REALITY_PRIVATE_KEY" ]]; then
         yellow "正在自动生成 Reality 密钥对..."
-        local key_output
-        key_output=$(generate_reality_keys)
+        local key_output=""
+        key_output=$(generate_reality_keys) || true
         if [[ -n "$key_output" ]]; then
             REALITY_PRIVATE_KEY=$(echo "$key_output" | grep 'Private key:' | awk '{print $3}')
             REALITY_PUBLIC_KEY=$(echo "$key_output" | grep 'Public key:' | awk '{print $3}')
             green "Reality 密钥对已生成"
         else
-            red "Reality 密钥生成失败"
-            exit 1
+            red "Reality 密钥生成失败，请手动输入"
+            while true; do
+                read -rp "Reality 私钥: " REALITY_PRIVATE_KEY
+                [[ -n "$REALITY_PRIVATE_KEY" ]] && break
+                red "私钥不能为空，请重新输入"
+            done
+            read -rp "Reality 公钥: " REALITY_PUBLIC_KEY
         fi
     else
         read -rp "Reality 公钥: " REALITY_PUBLIC_KEY
